@@ -118,7 +118,7 @@
 
 <footer>
   데이터: 네이버 지도 도로 혼잡도 · 공항 주차장은 공공데이터포털(인천국제공항공사·한국공항공사) 실시간 정보 · 방문 전 참고용이며 실제 현장과 다를 수 있습니다.<br>
-  ‘제로트래픽 예상시간’ = 진입 도로 통과시간(실측) + 혼잡도별 주차 대기(추정). 대기 시간은 추정값입니다.<br>
+  ‘예상 시간’ = 진입 도로 통과시간(실측) + 혼잡도별 주차 대기(추정). 대기 시간은 추정값입니다.<br>
   스타필드·몰 입점 매장은 매장 자체 진입로가 아닌 <b>몰 진입도로</b> 기준입니다.<br>
   본 서비스는 각 브랜드와 무관한 정보 제공 페이지입니다.
 </footer>
@@ -296,7 +296,7 @@ function renderHome(){
     </div>`;
   }).join('');
   document.getElementById('app').innerHTML = heroSVG() +
-    `<div class="hint">가려는 곳을 고르면, 지점별 <b>진입로 혼잡도</b>와 <b>제로트래픽 예상시간</b>(공항은 <b>잔여 주차 대수</b>)을 확인할 수 있어요.</div>
+    `<div class="hint">가려는 곳을 고르면, 지점별 <b>진입로 혼잡도</b>와 <b>예상 시간</b>(공항은 <b>잔여 주차 대수</b>)을 확인할 수 있어요.</div>
      <div class="tiles">${tiles}</div>`;
 }
 
@@ -316,7 +316,7 @@ function renderCat(key){
         ? `🟢 지금 조회 가능 · ${h12(c.hours[0])}~${h12(c.hours[1])}`
         : `⏳ 지금은 조회 시간이 아니에요 · ${h12(c.hours[0])}~${h12(c.hours[1])}에 확인하세요`}</div>
      ${c.note ? `<div class="banner" style="background:#fdf6e3;color:#8a6d1f">💡 ${c.note}</div>` : ''}
-     <div class="hint">👆 카드를 <b>누르면</b> 지금 진입로 혼잡도와 제로트래픽 예상시간이 표시됩니다.</div>
+     <div class="hint">👆 카드를 <b>누르면</b> 지금 진입로 혼잡도와 예상 시간이 표시됩니다.</div>
      <div class="grid">${cards}</div>`;
   if(key==='expo') c.stores.forEach(s=>loadEvents(s.name));
 }
@@ -360,7 +360,7 @@ function cardHTML(key,s){
   else if(r && r.error){ line='<div class="lb" style="color:#c98500">잠시 후 다시 눌러 주세요</div>'; }
   else if(r && r.congestion!=null && COLORS[r.congestion]){
     color = COLORS[r.congestion][0];
-    const eta = r.eta_min!=null ? `제로트래픽 예상시간 <b>${r.eta_min}분</b> <small>(도로 ${r.road_min}분+대기 ${r.queue_min}분)</small>` : '';
+    const eta = r.eta_min!=null ? `예상 시간 <b>${r.eta_min}분</b> <small>(도로 ${r.road_min}분+대기 ${r.queue_min}분)</small>` : '';
     const note = r.demo ? `<div style="font-size:11px;color:#c98500;margin-top:2px">${r.reason==='local'?'※ 로컬 미리보기 — 넷리파이 배포 후 실시간 값이 표시됩니다':'※ 임시값 ('+(r.reason||'키 확인')+')'}</div>` : '';
     line = `<div class="lb" style="color:${color}">${r.label}</div><div class="eta">${eta}</div>${zerotimeHTML(r,key)}${note}`;
   }
