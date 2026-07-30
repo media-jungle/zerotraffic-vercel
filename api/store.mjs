@@ -65,7 +65,11 @@ function demoOne(cat, s, reason) {
 
 async function geocode(address) {
   const res = await fetch(`${GEOCODE_URL}?query=${encodeURIComponent(address)}`, { headers: hdr() });
-  if (!res.ok) throw new Error("geocode " + res.status);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("[geocode fail]", res.status, body.slice(0, 500));
+    throw new Error("geocode " + res.status);
+  }
   const d = await res.json();
   if (!d.addresses || !d.addresses.length) return null;
   return [parseFloat(d.addresses[0].x), parseFloat(d.addresses[0].y)];
