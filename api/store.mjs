@@ -74,29 +74,32 @@ async function geocode(address) {
   if (!d.addresses || !d.addresses.length) return null;
   return [parseFloat(d.addresses[0].x), parseFloat(d.addresses[0].y)];
 }
-// 강변·매립지 등 특정 방향엔 도로가 없어 경로가 안 잡히는 지점이 있어
-// 150m 지점을 4방향(북동·남동·남서·북서)으로 돌아가며 시도한다.
+// 강변·매립지·대형 부지(아울렛 등) 근처는 특정 거리·방향에 도로가 없어
+// 경로가 안 잡힐 수 있다. 거리(150m→300m→500m) x 8방향으로 넓혀가며 시도.
 async function directions(lon, lat) {
-  const bearings = [45, 135, 225, 315];
-  for (const bearing of bearings) {
-    const [sLon, sLat] = offsetPoint(lon, lat, 150, bearing);
-    const url = `${DIRECTIONS_URL}?start=${sLon},${sLat}&goal=${lon},${lat}&option=traoptimal`;
-    const res = await fetch(url, { headers: hdr() });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error("[directions fail]", res.status, body.slice(0, 500));
-      throw new Error("directions " + res.status);
+  const distances = [150, 300, 500];
+  const bearings = [45, 135, 225, 315, 0, 90, 180, 270];
+  for (const dist of distances) {
+    for (const bearing of bearings) {
+      const [sLon, sLat] = offsetPoint(lon, lat, dist, bearing);
+      const url = `${DIRECTIONS_URL}?start=${sLon},${sLat}&goal=${lon},${lat}&option=traoptimal`;
+      const res = await fetch(url, { headers: hdr() });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        console.error("[directions fail]", res.status, body.slice(0, 500));
+        throw new Error("directions " + res.status);
+      }
+      const d = await res.json();
+      const route = d?.route?.traoptimal;
+      if (route && route.length) {
+        const sec = route[0].section || [];
+        const sum = route[0].summary || {};
+        const cong = sec.length ? sec[sec.length - 1].congestion : null;
+        const road = sum.duration ? Math.round((sum.duration / 60000) * 10) / 10 : 0;
+        if (cong != null) return [cong, road];
+      }
+      // 이 지점엔 경로가 없음 — 다음 방향/거리로 재시도
     }
-    const d = await res.json();
-    const route = d?.route?.traoptimal;
-    if (route && route.length) {
-      const sec = route[0].section || [];
-      const sum = route[0].summary || {};
-      const cong = sec.length ? sec[sec.length - 1].congestion : null;
-      const road = sum.duration ? Math.round((sum.duration / 60000) * 10) / 10 : 0;
-      if (cong != null) return [cong, road];
-    }
-    // 이 방향엔 경로가 없음 — 다음 방향으로 재시도
   }
   return [null, 0];
 }
