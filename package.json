@@ -1,0 +1,9 @@
+{
+  "name": "zerotraffic-app",
+  "version": "3.0.0",
+  "type": "module",
+  "description": "제로트래픽 — 대형시설 진입로·주차 혼잡도 통합판 (Vercel)",
+  "dependencies": {
+    "@upstash/redis": "^1.34.3"
+  }
+}
