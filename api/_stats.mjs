@@ -1,6 +1,8 @@
 // 혼잡 관측 데이터 축적 + 제로트래픽 시각 계산 (Upstash Redis)
 // - 방문자가 카드를 탭해 실측이 생길 때마다 recordObservation()으로 요일×30분 슬롯 집계에 누적
-// - zeroTimeToday()는 최근 4주 같은 요일 데이터에서 "이 시각 이후 전부 원활"인 가장 이른 시각을 계산
+// - zeroTimeToday()는 "지난주 같은 요일" 데이터에서 원활해지기 시작한 가장 이른 시각을 계산
+//   (마감까지 100% 원활이 안 끊기고 이어질 것을 요구하지 않음 — 원활 비율 기준으로 판정)
+//   지난주 데이터가 없거나 판정 불가면 그 이전 주로 순서대로 넘어가며 찾는다.
 // - Redis 실패(로컬 실행 등)는 전부 조용히 무시 → 본 기능(혼잡도 표시)에 영향 없음
 import { Redis } from "@upstash/redis";
 
@@ -59,17 +61,22 @@ export async function recordObservation(cat, name, congestion) {
   } catch { /* 집계 실패는 무시 */ }
 }
 
-// 슬롯 병합 데이터에서 제로트래픽 시각 계산 (테스트 가능하도록 분리)
-export function computeZeroTime(merged, closeHour = 22) {
+// 판정 기준 (필요시 조정)
+const MIN_SAMPLES = 2;   // 해당 슬롯에 최소 이만큼 관측이 쌓여야 신뢰
+const SMOOTH_RATIO = 0.5; // 관측 중 원활 비율이 이 이상이면 "원활 시작"으로 판정
+
+// 하루치 슬롯 데이터에서 원활해지기 시작한 첫 시각 계산 (테스트 가능하도록 분리)
+// daySlots: { "HH:MM": [관측수, 원활수] } — 특정 한 주의 특정 요일 데이터
+export function computeZeroTime(daySlots, closeHour = 22, startHour = "15:00") {
   const closeStr = `${String(closeHour).padStart(2, "0")}:00`;
-  const slots = Object.keys(merged).filter((t) => t >= "15:00" && t < closeStr).sort();
-  let best = null, tailN = 0;
-  for (let i = slots.length - 1; i >= 0; i--) {
-    const [n, f] = merged[slots[i]];
-    if (n > 0 && f === n) { tailN += n; best = slots[i]; }
-    else break; // 원활이 아닌 관측을 만나면 중단
+  const slots = Object.keys(daySlots).filter((t) => t >= startHour && t < closeStr).sort();
+  for (const t of slots) {
+    const [n, f] = daySlots[t];
+    if (n >= MIN_SAMPLES && f / n >= SMOOTH_RATIO) {
+      return { time: t, samples: n };
+    }
   }
-  return (best && tailN >= 3) ? { time: best, samples: tailN } : null;
+  return null;
 }
 
 const ztMemo = new Map(); // 인스턴스 메모 (1시간)
@@ -83,19 +90,16 @@ export async function zeroTimeToday(cat, name, closeHour = 22) {
   try {
     const r = redisClient();
     if (!r) return null;
-    const merged = {};
-    // 4주치를 한 번에 읽어 왕복을 줄인다
-    const weeks = await r.mget(...prevWeekKeys(4).map((wk) => aggKey(cat, name, wk)));
+    // i=0은 이번 주(당일 데이터라 아직 불완전할 수 있음)라서 건너뛰고,
+    // 지난주부터 순서대로 조회해 처음 판정되는 값을 쓴다.
+    const weekKeys = prevWeekKeys(5).slice(1); // 지난주 ~ 4주 전
+    const weeks = await r.mget(...weekKeys.map((wk) => aggKey(cat, name, wk)));
     for (const d of weeks) {
       const day = d && d[String(dow)];
       if (!day) continue;
-      for (const [slot, cell] of Object.entries(day)) {
-        const c = merged[slot] || [0, 0];
-        c[0] += cell[0]; c[1] += cell[1];
-        merged[slot] = c;
-      }
+      val = computeZeroTime(day, closeHour);
+      if (val) break;
     }
-    val = computeZeroTime(merged, closeHour);
   } catch { val = null; }
 
   if (ztMemo.size > 2000) ztMemo.clear();
