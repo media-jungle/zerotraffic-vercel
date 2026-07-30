@@ -7,6 +7,8 @@ import {
 } from "./_shared.mjs";
 import { recordObservation, zeroTimeToday } from "./_stats.mjs";
 
+export const config = { runtime: 'edge' }; // Vercel: 표준 웹 Request/Response로 실행
+
 const CACHE_MS = 10 * 60 * 1000; // 10분
 const GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 const DIRECTIONS_URL = "https://maps.apigw.ntruss.com/map-direction/v1/driving";

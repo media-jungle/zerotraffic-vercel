@@ -5,6 +5,8 @@
 import { CATEGORIES, offsetPoint } from "./_shared.mjs";
 import { recordObservation, redisClient } from "./_stats.mjs";
 
+export const config = { runtime: 'edge' }; // Vercel: 표준 웹 Request/Response로 실행
+
 const COLLECT_END = Date.parse("2026-08-21T00:00:00+09:00"); // 한 달 수집 종료(KST 8/20 자정까지)
 const TARGETS = ["costco", "traders"];
 

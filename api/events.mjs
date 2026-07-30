@@ -7,6 +7,8 @@
 // 행사 일정은 자주 안 바뀌므로 6시간 캐시.
 import { nowKST } from "./_shared.mjs";
 
+export const config = { runtime: 'edge' }; // Vercel: 표준 웹 Request/Response로 실행
+
 const CACHE_MS = 6 * 60 * 60 * 1000; // 6시간
 const cache = new Map(); // venue -> {ts, data}
 

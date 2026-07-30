@@ -11,6 +11,8 @@
 // 환경변수: DATA_GO_KR_KEY (공공데이터포털 일반 인증키, URL-인코딩 안 된 Decoding 키 권장)
 import { AIRPORTS, nowKST } from "./_shared.mjs";
 
+export const config = { runtime: 'edge' }; // Vercel: 표준 웹 Request/Response로 실행
+
 const CACHE_MS = 5 * 60 * 1000; // 공항은 5분 캐시
 const cache = new Map(); // code -> {ts, data}
 
