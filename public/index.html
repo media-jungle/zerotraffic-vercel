@@ -361,7 +361,7 @@ function cardHTML(key,s){
   else if(r && r.congestion!=null && COLORS[r.congestion]){
     color = COLORS[r.congestion][0];
     const eta = r.eta_min!=null ? `예상시간 <b>${r.eta_min}분</b> <small>(도로 ${r.road_min}분+대기 ${r.queue_min}분)</small>` : '';
-    const note = r.demo ? `<div style="font-size:11px;color:#c98500;margin-top:2px">${r.reason==='local'?'※ 로컬 미리보기 — 넷리파이 배포 후 실시간 값이 표시됩니다':'※ 임시값 ('+(r.reason||'키 확인')+')'}</div>` : '';
+    const note = r.demo ? `<div style="font-size:11px;color:#c98500;margin-top:2px">${r.reason==='local'?'※ 로컬 미리보기 — 넷리파이 배포 후 실시간 값이 표시됩니다':r.reason==='no-route'?'※ 이 지점은 진입로 위치상 자동 계산이 어려워요':'※ 임시값 ('+(r.reason||'키 확인')+')'}</div>` : '';
     line = `<div class="lb" style="color:${color}">${r.label}</div><div class="eta">${eta}</div>${zerotimeHTML(r,key)}${note}`;
   }
   const ev = key==='expo' ? (ESTATE[s.name]!==undefined ? ESTATE[s.name] : '<div style="font-size:12px;color:#a0a4ab;margin:2px 0 6px">📅 행사 확인 중…</div>') : '';

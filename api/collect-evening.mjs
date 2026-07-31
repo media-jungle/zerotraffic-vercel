@@ -26,16 +26,27 @@ async function geocode(address) {
   if (!d.addresses || !d.addresses.length) return null;
   return [parseFloat(d.addresses[0].x), parseFloat(d.addresses[0].y)];
 }
+// 강변·매립지·대형 부지 근처는 도로가 없어 경로가 안 잡힐 수 있다.
+// 거리(150m→300m→500m) x 8방향으로 넓혀가며 시도 (store.mjs의 directions()와 동일 로직).
 async function congestionAt(lon, lat) {
-  const [sLon, sLat] = offsetPoint(lon, lat, 150, 45);
-  const url = `${DIRECTIONS_URL}?start=${sLon},${sLat}&goal=${lon},${lat}&option=traoptimal`;
-  const res = await fetch(url, { headers: hdr() });
-  if (!res.ok) return null;
-  const d = await res.json();
-  const route = d?.route?.traoptimal;
-  if (!route || !route.length) return null;
-  const sec = route[0].section || [];
-  return sec.length ? sec[sec.length - 1].congestion : null;
+  const distances = [150, 300, 500];
+  const bearings = [45, 135, 225, 315, 0, 90, 180, 270];
+  for (const dist of distances) {
+    for (const bearing of bearings) {
+      const [sLon, sLat] = offsetPoint(lon, lat, dist, bearing);
+      const url = `${DIRECTIONS_URL}?start=${sLon},${sLat}&goal=${lon},${lat}&option=traoptimal`;
+      const res = await fetch(url, { headers: hdr() });
+      if (!res.ok) throw new Error("directions " + res.status);
+      const d = await res.json();
+      const route = d?.route?.traoptimal;
+      if (route && route.length) {
+        const sec = route[0].section || [];
+        if (sec.length) return sec[sec.length - 1].congestion;
+      }
+      // 이 지점엔 경로가 없음 — 다음 방향/거리로 재시도
+    }
+  }
+  return null;
 }
 
 export default async (req) => {
