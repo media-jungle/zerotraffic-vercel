@@ -5,7 +5,8 @@ import {
   CATEGORIES, CONGESTION, QUEUE_EST_MIN,
   offsetPoint, nowKST, isBusinessHoursKST,
 } from "./_shared.mjs";
-import { recordObservation, zeroTimeToday } from "./_stats.mjs";
+import { recordObservation, recordRawObservation, zeroTimeToday } from "./_stats.mjs";
+import { getContext } from "./_context.mjs";
 
 export const config = { runtime: 'edge' }; // Vercel: 표준 웹 Request/Response로 실행
 
@@ -149,6 +150,14 @@ export default async (req) => {
 
     const [lon, lat] = coord;
     const [cong, road] = await directions(lon, lat);
+
+    // 원본 관측값 + 날씨/달력 맥락 기록 (혼잡도를 못 구했어도 null로 남겨서 결측을 0과 구분)
+    const ctx = await getContext(s.lat, s.lon).catch(() => ({ weather: null, calendar: null }));
+    await recordRawObservation(cat, name, {
+      ts: nowKST(), congestion: cong, road_min: cong != null ? road : null,
+      weather: ctx.weather, calendar: ctx.calendar,
+    });
+
     if (cong == null) return json(demoOne(cat, s, "no-route"));
 
     const [label, hex] = CONGESTION[cong] || ["알수없음", "#95a5a6"];

@@ -61,6 +61,23 @@ export async function recordObservation(cat, name, congestion) {
   } catch { /* 집계 실패는 무시 */ }
 }
 
+// 원본 관측 + 맥락(날씨/달력) 로그 — 콘텐츠 제작용 원본 데이터.
+// 기존 agg 스키마(위)는 절대 건드리지 않고 별도 키 네임스페이스에 날짜별로 쌓는다
+// (백업 복원된 125개 파일과의 호환성 유지). 값을 못 가져오면 0이 아니라 null로 남긴다.
+export function rawKey(cat, name, dateStr) { return `raw/${cat}/${encodeURIComponent(name)}/${dateStr}`; }
+function kstDateStr(d = kstNow()) { return d.toISOString().slice(0, 10); }
+
+export async function recordRawObservation(cat, name, payload) {
+  try {
+    const r = redisClient();
+    if (!r) return;
+    const key = rawKey(cat, name, kstDateStr());
+    const arr = (await r.get(key)) || [];
+    arr.push(payload);
+    await r.set(key, arr);
+  } catch { /* 집계 실패는 무시 */ }
+}
+
 // 판정 기준 (필요시 조정)
 const MIN_SAMPLES = 2;   // 해당 슬롯에 최소 이만큼 관측이 쌓여야 신뢰
 const SMOOTH_RATIO = 0.5; // 관측 중 원활 비율이 이 이상이면 "원활 시작"으로 판정

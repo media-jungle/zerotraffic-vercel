@@ -2,8 +2,9 @@
 // 스케줄은 vercel.json의 crons에 정의 (UTC 8:00~12:30 = KST 17:00~21:30, 매 30분)
 // 하루 44개 지점 × 10회 = 440 Directions 호출. 수집 종료일 이후엔 아무것도 안 함.
 // 종료 후에는 방문자 탭 데이터만으로 계속 학습된다. 연장하려면 COLLECT_END만 수정.
-import { CATEGORIES, offsetPoint } from "./_shared.mjs";
-import { recordObservation, redisClient } from "./_stats.mjs";
+import { CATEGORIES, offsetPoint, nowKST } from "./_shared.mjs";
+import { recordObservation, recordRawObservation, redisClient } from "./_stats.mjs";
+import { getContext } from "./_context.mjs";
 
 export const config = { runtime: 'edge' }; // Vercel: 표준 웹 Request/Response로 실행
 
@@ -41,12 +42,15 @@ async function congestionAt(lon, lat) {
       const route = d?.route?.traoptimal;
       if (route && route.length) {
         const sec = route[0].section || [];
-        if (sec.length) return sec[sec.length - 1].congestion;
+        const sum = route[0].summary || {};
+        const cong = sec.length ? sec[sec.length - 1].congestion : null;
+        const road = sum.duration ? Math.round((sum.duration / 60000) * 10) / 10 : 0;
+        if (cong != null) return [cong, road];
       }
       // 이 지점엔 경로가 없음 — 다음 방향/거리로 재시도
     }
   }
-  return null;
+  return [null, 0];
 }
 
 export default async (req) => {
@@ -82,7 +86,15 @@ export default async (req) => {
           }
           if (!coord && s.lat != null) coord = [s.lon, s.lat];
           if (!coord) { fail++; return; }
-          const cong = await congestionAt(coord[0], coord[1]);
+          const [cong, road] = await congestionAt(coord[0], coord[1]);
+
+          // 원본 관측값 + 날씨/달력 맥락 기록 (경로를 못 구했어도 null로 남겨서 결측을 0과 구분)
+          const ctx = await getContext(s.lat, s.lon).catch(() => ({ weather: null, calendar: null }));
+          await recordRawObservation(cat, s.name, {
+            ts: nowKST(), congestion: cong, road_min: cong != null ? road : null,
+            weather: ctx.weather, calendar: ctx.calendar,
+          });
+
           if (cong == null) { fail++; return; }
           await recordObservation(cat, s.name, cong);
           ok++;
