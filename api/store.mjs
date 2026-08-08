@@ -152,10 +152,10 @@ export default async (req) => {
     const [cong, road] = await directions(lon, lat);
 
     // 원본 관측값 + 날씨/달력 맥락 기록 (혼잡도를 못 구했어도 null로 남겨서 결측을 0과 구분)
-    const ctx = await getContext(s.lat, s.lon).catch(() => ({ weather: null, calendar: null }));
+    const ctx = await getContext(s.lat, s.lon, s.sido).catch(() => ({ weather: null, air: null, calendar: null }));
     await recordRawObservation(cat, name, {
       ts: nowKST(), congestion: cong, road_min: cong != null ? road : null,
-      weather: ctx.weather, calendar: ctx.calendar,
+      weather: ctx.weather, air: ctx.air, calendar: ctx.calendar,
     });
 
     if (cong == null) return json(demoOne(cat, s, "no-route"));

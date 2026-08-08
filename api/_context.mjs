@@ -8,6 +8,7 @@
 const KMA_NCST_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst";
 const KMA_FCST_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";
 const HOLIDAY_URL = "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo";
+const AIR_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty";
 
 const PTY_LABEL = { 0: "없음", 1: "비", 2: "비/눈", 3: "눈", 4: "소나기", 5: "빗방울", 6: "빗방울눈날림", 7: "눈날림" };
 const SKY_LABEL = { 1: "맑음", 3: "구름많음", 4: "흐림" };
@@ -111,6 +112,45 @@ export async function fetchWeather(lat, lon) {
   return data;
 }
 
+// ── 대기질(미세먼지) — 에어코리아 시도별 실시간 측정정보. 매장의 sido 필드를 그대로 사용(좌표 변환 불필요) ──
+const airCache = new Map(); // sido -> {ts, data}
+const AIR_CACHE_MS = 40 * 60 * 1000; // 측정소 값은 대략 시간 단위 갱신이라 40분이면 충분
+
+function avgValid(items, field) {
+  const vals = items
+    .map((it) => it[field])
+    .filter((v) => v != null && v !== "-" && v !== "" && Number.isFinite(parseFloat(v)))
+    .map(parseFloat);
+  if (!vals.length) return null;
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+}
+
+export async function fetchAirQuality(sido) {
+  const empty = { pm10: null, pm25: null };
+  const key = process.env.DATA_GO_KR_KEY;
+  if (!key || !sido) return empty;
+
+  const cached = airCache.get(sido);
+  if (cached && Date.now() - cached.ts < AIR_CACHE_MS) return cached.data;
+
+  let pm10 = null, pm25 = null;
+  try {
+    const url = `${AIR_URL}?serviceKey=${encodeURIComponent(key)}&returnType=json&numOfRows=100&pageNo=1&sidoName=${encodeURIComponent(sido)}&ver=1.0`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const d = await res.json();
+      const items = d?.response?.body?.items;
+      const arr = items ? [].concat(items) : [];
+      pm10 = avgValid(arr, "pm10Value");
+      pm25 = avgValid(arr, "pm25Value");
+    }
+  } catch { /* 무시 — 아래서 null 유지 */ }
+
+  const data = { pm10, pm25 };
+  airCache.set(sido, { ts: Date.now(), data });
+  return data;
+}
+
 // ── 특일정보(공휴일) — 연 단위로 캐시, 명절 D-day 계산에도 사용 ──
 const holidayCache = new Map(); // year -> {ts, map: Map("YYYYMMDD" -> {name, isHoliday})}
 const HOLIDAY_CACHE_MS = 24 * 60 * 60 * 1000;
@@ -211,11 +251,12 @@ export async function getCalendarContext(d = kst()) {
   };
 }
 
-// 날씨 + 달력 맥락을 한 번에. 둘 다 실패해도 절대 throw하지 않는다.
-export async function getContext(lat, lon) {
-  const [weather, calendar] = await Promise.all([
+// 날씨 + 대기질 + 달력 맥락을 한 번에. 셋 다 실패해도 절대 throw하지 않는다.
+export async function getContext(lat, lon, sido) {
+  const [weather, air, calendar] = await Promise.all([
     fetchWeather(lat, lon).catch(() => ({ temp: null, pty: null, ptyLabel: null, sky: null, skyLabel: null })),
+    fetchAirQuality(sido).catch(() => ({ pm10: null, pm25: null })),
     getCalendarContext().catch(() => null),
   ]);
-  return { weather, calendar };
+  return { weather, air, calendar };
 }
