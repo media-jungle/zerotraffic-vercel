@@ -1,8 +1,9 @@
 // 혼잡 관측 데이터 축적 + 제로트래픽 시각 계산 (Upstash Redis)
 // - 방문자가 카드를 탭해 실측이 생길 때마다 recordObservation()으로 요일×30분 슬롯 집계에 누적
-// - zeroTimeToday()는 "지난주 같은 요일" 데이터에서 원활해지기 시작한 가장 이른 시각을 계산
+// - zeroTimeToday()는 "최근 몇 주간의 같은 요일" 데이터를 합산해 원활해지기 시작한 가장 이른 시각을 계산
 //   (마감까지 100% 원활이 안 끊기고 이어질 것을 요구하지 않음 — 원활 비율 기준으로 판정)
-//   지난주 데이터가 없거나 판정 불가면 그 이전 주로 순서대로 넘어가며 찾는다.
+//   한 주 안에서 특정 요일·슬롯의 관측은 최대 1건이라 주별로 따로 보면 MIN_SAMPLES를 영원히 못 넘긴다.
+//   그래서 주별 조회가 아니라 여러 주를 합산한 뒤 판정한다.
 // - Redis 실패(로컬 실행 등)는 전부 조용히 무시 → 본 기능(혼잡도 표시)에 영향 없음
 import { Redis } from "@upstash/redis";
 
@@ -82,6 +83,22 @@ export async function recordRawObservation(cat, name, payload) {
 const MIN_SAMPLES = 2;   // 해당 슬롯에 최소 이만큼 관측이 쌓여야 신뢰
 const SMOOTH_RATIO = 0.5; // 관측 중 원활 비율이 이 이상이면 "원활 시작"으로 판정
 
+// 여러 주의 같은 요일 슬롯을 하나로 합산 ([관측수, 원활수]를 슬롯별로 더함)
+export function mergeDaySlots(days) {
+  const merged = {};
+  for (const day of days) {
+    if (!day) continue;
+    for (const [t, cell] of Object.entries(day)) {
+      if (!Array.isArray(cell)) continue;
+      const acc = merged[t] || [0, 0];
+      acc[0] += cell[0] || 0;
+      acc[1] += cell[1] || 0;
+      merged[t] = acc;
+    }
+  }
+  return merged;
+}
+
 // 하루치 슬롯 데이터에서 원활해지기 시작한 첫 시각 계산 (테스트 가능하도록 분리)
 // daySlots: { "HH:MM": [관측수, 원활수] } — 특정 한 주의 특정 요일 데이터
 export function computeZeroTime(daySlots, closeHour = 22, startHour = "15:00") {
@@ -107,16 +124,12 @@ export async function zeroTimeToday(cat, name, closeHour = 22) {
   try {
     const r = redisClient();
     if (!r) return null;
-    // i=0은 이번 주(당일 데이터라 아직 불완전할 수 있음)라서 건너뛰고,
-    // 지난주부터 순서대로 조회해 처음 판정되는 값을 쓴다.
+    // i=0은 이번 주(당일 데이터라 아직 불완전할 수 있음)라서 건너뛴다.
+    // 한 주만 보면 슬롯당 관측이 1건뿐이라 판정이 안 되므로, 여러 주를 합산한 뒤 한 번에 판정한다.
     const weekKeys = prevWeekKeys(5).slice(1); // 지난주 ~ 4주 전
     const weeks = await r.mget(...weekKeys.map((wk) => aggKey(cat, name, wk)));
-    for (const d of weeks) {
-      const day = d && d[String(dow)];
-      if (!day) continue;
-      val = computeZeroTime(day, closeHour);
-      if (val) break;
-    }
+    const merged = mergeDaySlots(weeks.map((d) => d && d[String(dow)]));
+    val = computeZeroTime(merged, closeHour);
   } catch { val = null; }
 
   if (ztMemo.size > 2000) ztMemo.clear();
